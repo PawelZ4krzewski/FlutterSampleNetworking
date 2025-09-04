@@ -25,7 +25,8 @@ class Repository {
     } on AppError catch (e) {
       return Result.failure(e);
     } catch (e) {
-      return Result.failure(AppError(type: AppErrorType.unknown, message: e.toString(), raw: e));
+      return Result.failure(
+          AppError(type: AppErrorType.unknown, message: e.toString(), raw: e));
     }
   }
 }

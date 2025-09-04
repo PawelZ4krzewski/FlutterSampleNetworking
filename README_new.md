@@ -43,34 +43,6 @@ Measure both configurations:
 - **Baseline**: `flutter build apk` or `flutter build ios`
 - **Minified**: `flutter build apk --obfuscate --split-debug-info=symbols/` or equivalent
 
-## Bench screen
-
-The app includes a Bench screen for performance testing with configurable inputs:
-
-**Inputs:**
-- PATH: API endpoint path (default: `/posts`)
-- Runs (N): Number of requests to perform (default: 20)
-- Warm-up: Discard first request (default: ON)
-- Timeouts: Connect/Send/Receive timeouts in milliseconds
-- Enable retry: Toggle retry logic (default: OFF for clean measurements)
-
-**Outputs:**
-- Per-attempt durations and status/error codes
-- Aggregates: count, min, max, median, P95
-- Error counts by type (Timeout/Offline/4xx/5xx/Cancel/Unknown)
-- Last payload preview
-
-**Example profile run:**
-```bash
-flutter run --profile \
-  --dart-define=BASE_URL=https://jsonplaceholder.typicode.com \
-  --dart-define=CONNECT_TIMEOUT_MS=8000 \
-  --dart-define=SEND_TIMEOUT_MS=8000 \
-  --dart-define=RECEIVE_TIMEOUT_MS=8000
-```
-
-Note: Keep retry OFF for performance testing. Each request logs exactly one `NET_GET_MS: <ms>` from the data layer.
-
 ## Configuration
 
 Required `--dart-define` parameters:

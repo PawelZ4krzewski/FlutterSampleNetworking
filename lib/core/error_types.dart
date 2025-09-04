@@ -17,17 +17,17 @@ class AppError {
   });
 
   @override
-  String toString() => 'AppError(type: $type, statusCode: $statusCode, message: $message)';
+  String toString() =>
+      'AppError(type: $type, statusCode: $statusCode, message: $message)';
 }
 
-/// Map DioException to AppError
 AppError mapDioException(DioException e) {
   final status = e.response?.statusCode;
-  // Connection related
   if (e.type == DioExceptionType.connectionTimeout ||
       e.type == DioExceptionType.sendTimeout ||
       e.type == DioExceptionType.receiveTimeout) {
-    return AppError(type: AppErrorType.timeout, message: 'Request timed out', raw: e);
+    return AppError(
+        type: AppErrorType.timeout, message: 'Request timed out', raw: e);
   }
 
   if (e.type == DioExceptionType.badResponse) {
@@ -50,13 +50,19 @@ AppError mapDioException(DioException e) {
   }
 
   if (e.type == DioExceptionType.cancel) {
-    return AppError(type: AppErrorType.cancel, message: 'Request cancelled', raw: e);
+    return AppError(
+        type: AppErrorType.cancel, message: 'Request cancelled', raw: e);
   }
 
-  // Network down/offline
-  if (e.type == DioExceptionType.connectionError || e.error is SocketException) {
-    return AppError(type: AppErrorType.offline, message: 'No internet connection', raw: e);
+  if (e.type == DioExceptionType.connectionError ||
+      e.error is SocketException) {
+    return AppError(
+        type: AppErrorType.offline, message: 'No internet connection', raw: e);
   }
 
-  return AppError(type: AppErrorType.unknown, message: 'Unknown error', raw: e, statusCode: status);
+  return AppError(
+      type: AppErrorType.unknown,
+      message: 'Unknown error',
+      raw: e,
+      statusCode: status);
 }

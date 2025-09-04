@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_sample_networking/core/app_config.dart';
 
-/// Simple timing helpers based on Stopwatch.
 Stopwatch startTimer() => Stopwatch()..start();
 
 void logDuration(String label, Stopwatch sw) {

@@ -7,7 +7,9 @@ class Post {
 
   factory Post.fromJson(Map<String, dynamic> json) {
     return Post(
-      id: (json['id'] is String) ? int.tryParse(json['id'] as String) ?? 0 : (json['id'] ?? 0) as int,
+      id: (json['id'] is String)
+          ? int.tryParse(json['id'] as String) ?? 0
+          : (json['id'] ?? 0) as int,
       title: (json['title'] ?? '').toString(),
       body: (json['body'] ?? '').toString(),
     );

@@ -33,7 +33,7 @@ class _DataScreenState extends State<DataScreen> {
       _error = null;
       _items = const [];
     });
-  final result = await _repository.getPosts();
+    final result = await _repository.getPosts();
     if (!mounted) return;
     setState(() {
       _loading = false;
@@ -50,7 +50,7 @@ class _DataScreenState extends State<DataScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('DataScreen – Flutter')), 
+      appBar: AppBar(title: const Text('DataScreen – Flutter')),
       body: _buildBody(),
     );
   }
@@ -88,7 +88,7 @@ class _DataScreenState extends State<DataScreen> {
   }
 
   String _humanMessage(AppError error) {
-  switch (error.type) {
+    switch (error.type) {
       case AppErrorType.offline:
         return 'Jesteś offline. Sprawdź połączenie internetowe.';
       case AppErrorType.timeout:

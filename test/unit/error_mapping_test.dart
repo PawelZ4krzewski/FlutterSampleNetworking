@@ -26,7 +26,8 @@ void main() {
     test('badResponse 500 -> AppErrorType.server5xx', () {
       final e = DioException(
         requestOptions: RequestOptions(path: '/'),
-        response: Response(requestOptions: RequestOptions(path: '/'), statusCode: 500),
+        response: Response(
+            requestOptions: RequestOptions(path: '/'), statusCode: 500),
         type: DioExceptionType.badResponse,
       );
       final mapped = mapDioException(e);
@@ -36,7 +37,8 @@ void main() {
     test('badResponse 404 -> AppErrorType.client4xx', () {
       final e = DioException(
         requestOptions: RequestOptions(path: '/'),
-        response: Response(requestOptions: RequestOptions(path: '/'), statusCode: 404),
+        response: Response(
+            requestOptions: RequestOptions(path: '/'), statusCode: 404),
         type: DioExceptionType.badResponse,
       );
       final mapped = mapDioException(e);

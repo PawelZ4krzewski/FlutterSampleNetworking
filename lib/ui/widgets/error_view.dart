@@ -16,7 +16,10 @@ class ErrorView extends StatelessWidget {
           children: [
             Text(
               message,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.redAccent),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyLarge
+                  ?.copyWith(color: Colors.redAccent),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
