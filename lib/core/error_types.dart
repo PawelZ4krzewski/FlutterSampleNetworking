@@ -23,6 +23,16 @@ class AppError {
 
 AppError mapDioException(DioException e) {
   final status = e.response?.statusCode;
+  // Platform-specific timeout may surface as connectionError with timeout wording
+  if (e.type == DioExceptionType.connectionError) {
+    final msg = (e.message ?? '').toLowerCase();
+    if (msg.contains('timed out') || msg.contains('timeout')) {
+      return AppError(type: AppErrorType.timeout, message: 'Request timed out', raw: e);
+    }
+    if (e.error is SocketException) {
+      return AppError(type: AppErrorType.offline, message: 'No internet connection', raw: e);
+    }
+  }
   if (e.type == DioExceptionType.connectionTimeout ||
       e.type == DioExceptionType.sendTimeout ||
       e.type == DioExceptionType.receiveTimeout) {

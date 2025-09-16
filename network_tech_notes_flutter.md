@@ -299,3 +299,204 @@ Ensure: set explicit BASE_URL; keep ENABLE_RETRY=false for timing fairness.
 Flutter SDK version exact: UNKNOWN (not pinned).
 No other networking/JSON libs present.
 
+
+## Benchmark Scenarios (S1–S6)
+
+Exact reflection of `lib/bench/bench_presets.dart` (single source of truth). Timeouts listed as connect/send/receive.
+
+| ID | Title | BASE_URL | PATH | Timeouts (ms) | Retry | Note |
+|----|-------|----------|------|---------------|-------|------|
+| S1 | S1 Small | https://dummyjson.com | /posts/1 | 8000/8000/8000 | OFF | Latency single small payload |
+| S2 | S2 List | https://dummyjson.com | /posts?limit=100 | 8000/8000/8000 | OFF | List parsing |
+| S3 | S3 Error | https://httpbingo.org | /status/500 | 8000/8000/8000 | OFF | Deterministic 500 |
+| S4 | S4 Timeout | https://httpbingo.org | /delay/10 | 1000/1000/1000 | OFF | 200 delayed -> timeout |
+| S5 | S5 Offline | https://dummyjson.com | /posts/1 | 8000/8000/8000 | OFF | Enable airplane mode |
+| S6 | S6 Headers | https://httpbingo.org | /headers | 8000/8000/8000 | OFF | Echo headers (httpbin) |
+
+Warm-up: discard first attempt when enabled (bench UI checkbox). Effective sample size with N=30 is 29.
+
+## Measurement Configuration (parity)
+
+- Dio BaseOptions headers: User-Agent=NetBench/1.0, Cache-Control=no-cache, Accept=application/json
+- Timeouts: connect/send/receive configured via BaseOptions (environment overrides)
+- One Dio instance per logical run; single Stopwatch timing per request; log key: `NET_GET_MS`
+- Warm-up: ON (discard first); N=30 → 29 samples analyzed
+- Build mode: Profile / Release (no debug HTTP interceptor noise)
+- Retry: OFF (fair latency comparison)
+- Error taxonomy: Timeout, NoInternet (SocketException/connectionError), Http4xx, Http5xx, Cancel, Unknown (see `mapDioException`)
+- P95 index: `floor(0.95 * (n - 1))`
+
+## Recent Changes (2025-09-05)
+
+- Presets: S3 → `/status/500` on httpbingo; S4 → `/delay/10` on httpbingo (1s client timeouts); S6 → `/headers`
+- Enhanced `mapDioException`: classify connectionError with timeout wording as Timeout; 4xx / 5xx via badResponse
+- Guard: non-2xx responses not decoded; thrown and mapped
+- Added diagnostic log line: `DIO_ERR type=... status=... rt=... msg=...`
+- Preserved single per-request timing log `NET_GET_MS`
+- Aggregate guard ensuring `min <= max`
+- Ensured one Dio per benchmark series
+
+## Tests (what exists & how to run)
+
+Existing unit tests (see `test/unit/`):
+- `bench_runner_test.dart` – median, p95, warm-up discard, error aggregation
+- `error_mapping_test.dart` – DioException → AppErrorType mapping (timeout, cancel, 4xx, 5xx, offline)
+- `model_decode_test.dart` – Post JSON decoding variants
+
+Run locally (all tests):
+```
+flutter test
+```
+With coverage (generates `coverage/lcov.info`):
+```
+flutter test --coverage
+```
+
+Integration HTTP tests: intentionally omitted (public endpoints + focus on app-layer timing). Could be added with e.g. `http_mock_adapter` for deterministic responses – out of current scope.
+
+Manual bench procedure:
+1. Open Bench screen.
+2. Choose preset (S1–S6) OR custom baseUrl+path.
+3. Set N=30, Warm-up ON (discard 1st automatically).
+4. Run scenario or Run All.
+5. After completion: capture CSV / Markdown via buttons or log batch CSV.
+6. Use single `NET_GET_MS` lines from logs for external validation.
+
+## Environment for Reproducibility
+
+Tooling versions (derive & record before publication):
+- Flutter SDK: (to-fill: output of `flutter --version` e.g. Flutter 3.x.x • channel stable • revision <hash>)
+- Dart SDK: (paired with Flutter above)
+- Android Gradle Plugin: (to-fill if needed; gradle wrapper present)
+- Gradle Wrapper: see `android/gradle/wrapper/gradle-wrapper.properties` (to-fill distributionUrl)
+- Xcode: (to-fill: e.g. 15.x)
+
+Dependencies (from `pubspec.lock`):
+- dio 5.9.0 (declared ^5.4.0 in pubspec, resolved 5.9.0)
+- flutter_lints 5.0.0
+- test_api 0.7.4 (transitive)
+- collection 1.19.1 (transitive key for list ops)
+- vm_service 15.0.0 (transitive, dev tooling)
+
+SDK constraints:
+- Dart >=3.3.0 <4.0.0 (pubspec) ; lockfile indicates min >=3.7.0-0 pre for some deps (stable usage expected)
+
+Runtime environments (document actual devices):
+- Android: (to-fill: Device model, SoC, API level, build variant=profile/release)
+- iOS: (to-fill: Simulator model e.g. iPhone 15, iOS version, or physical device)
+
+Execution conditions:
+- Same Wi-Fi network; minimal background traffic
+- Build mode: Profile (preferred) or Release
+- Interceptors disabled in Release (kReleaseMode)
+- Retry OFF
+- N=30, discard 1 (warm-up) → 29 analyzed
+- One Dio instance per series
+- Identical headers & timeout values across platforms
+- Airplane mode only for S5 Offline
+
+## Parity Checklist (Flutter vs Compose)
+
+- Headers identical: User-Agent=NetBench/1.0, Cache-Control=no-cache, Accept=application/json
+- Timeouts: S1/S2/S6 8000/8000/8000 ms; S4 1000/1000/1000 ms; S3/S5 also 8000/8000/8000
+- Retry: OFF for measurements
+- Single Dio client per benchmark series (fresh for overrides)
+- Exactly one Stopwatch + one `NET_GET_MS` log per request
+- P95 index = floor(0.95*(n-1)) on sorted durations
+- Endpoints: dummyjson (S1,S2), httpbingo `/status/500` (S3), httpbingo `/delay/10` (S4), dummyjson (S5 baseline but offline), httpbingo `/headers` (S6)
+- Warm-up discard: first attempt excluded when enabled
+
+## Exact Commands (Build / Run / Bench)
+
+Static analysis:
+```
+flutter analyze
+```
+
+Unit tests:
+```
+flutter test
+flutter test --coverage
+```
+
+Profile run (default timeouts 8000ms):
+```
+flutter run --profile \
+  --dart-define=BASE_URL=https://dummyjson.com \
+  --dart-define=CONNECT_TIMEOUT_MS=8000 \
+  --dart-define=SEND_TIMEOUT_MS=8000 \
+  --dart-define=RECEIVE_TIMEOUT_MS=8000
+```
+
+Timeout scenario S4 (1s client timeouts):
+```
+flutter run --profile \
+  --dart-define=BASE_URL=https://httpbingo.org \
+  --dart-define=CONNECT_TIMEOUT_MS=1000 \
+  --dart-define=SEND_TIMEOUT_MS=1000 \
+  --dart-define=RECEIVE_TIMEOUT_MS=1000
+```
+
+Release build (Android APK):
+```
+flutter build apk --release
+```
+
+Bench screen usage:
+1. Select preset (e.g. S2 List) – fields auto-populate
+2. Set Runs=N=30, enable Warm-up
+3. Press Run Scenario or Run All
+4. After completion: Copy CSV / Copy MD (or Log Batch CSV) for archival
+5. Clear Batch Results when starting a new series
+
+## Dependencies & Versions (pin)
+
+Primary:
+- dio 5.9.0 – HTTP client (timeouts & headers via BaseOptions)
+
+Dev / Quality:
+- flutter_lints 5.0.0 – lint rules
+- flutter_test (SDK) – test framework
+
+Not used: code generation (no json_serializable), caching libs, logging frameworks (raw print only), mock adapters.
+
+## Payload Notes
+
+- S1 Small: Single post object (few string fields) – minimal parse cost
+- S2 List: ~100 post objects – stresses JSON decode & allocation
+- S3 Error: 500 status body ignored (no decode) – measures error path overhead
+- S4 Timeout: No body (client abort) – captures timeout latency (client threshold + overhead)
+- S5 Offline: Immediate socket/connection error – fail-fast path (<50ms expected on real device)
+- S6 Headers: Echo headers JSON; keys may vary; client reads subset (current code normalizes as needed in metrics path)
+
+## Latest Results (Flutter, 2025-09-05)
+
+```
+scenario,N,median_ms,p95_ms,min_ms,max_ms,errors
+S1 Small,29,310,406,280,414,0
+S2 List,29,523,620,321,681,0
+S3 Error,29,216,305,199,310,29
+S4 Timeout,29,1105,1132,1071,1135,29
+S5 Offline,29,16,19,14,23,29
+S6 Headers,29,303,364,204,544,0
+```
+
+## Interpretation Highlights
+
+- S1 / S2: Low medians; Flutter ahead vs expected Compose baseline (lower = better)
+- S3: Deterministic 500 classification; error path latency stable
+- S4: ~1s + minor overhead indicates timeout trigger behaving as configured
+- S5: Fail-fast offline path (<20ms observed) – minimal stack overhead
+- S6: Median similar class to S1; higher P95 influenced by endpoint variability
+- Error scenarios (S3,S4,S5) measure cost of failure handling, not payload decode
+
+## Threats to Validity
+
+- Public endpoints → tail latency variance (repeat 2–3 series; compare medians & P95)
+- Device thermal / CPU scaling can skew longer runs → document temperature / battery state
+- Network contention (other traffic) may inflate tail; isolate Wi-Fi
+- Endpoint changes upstream (schema, rate limits) could alter decode cost
+- Emulator vs physical device differences (syscall & DNS latency) – prefer physical for final numbers
+- Consistency: identical headers, timeouts, retry=OFF mandatory for cross-platform parity
+
+

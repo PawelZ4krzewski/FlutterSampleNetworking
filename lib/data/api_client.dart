@@ -142,11 +142,10 @@ class ApiClient {
     }
 
     // Build a fresh Dio if any override is provided; otherwise use existing one
-    final dio = (connectTimeout != null ||
-            sendTimeout != null ||
-            receiveTimeout != null)
+    final effectiveBase = _dio.options.baseUrl; // preserve client-specific base URL
+    final dio = (connectTimeout != null || sendTimeout != null || receiveTimeout != null)
         ? Dio(BaseOptions(
-            baseUrl: AppConfig.baseUrl,
+            baseUrl: effectiveBase,
             connectTimeout: connectTimeout ?? AppConfig.connectTimeout,
             sendTimeout: sendTimeout ?? AppConfig.sendTimeout,
             receiveTimeout: receiveTimeout ?? AppConfig.receiveTimeout,
@@ -162,34 +161,41 @@ class ApiClient {
     final sw = Stopwatch()..start();
     try {
       final response = await dio.get(path);
-      final data = response.data;
-      if (response.statusCode == 200 && data is List) {
-        final posts = data
-            .map((e) => Post.fromJson(Map<String, dynamic>.from(e as Map)))
-            .toList()
-            .cast<Post>();
-        sw.stop();
-        AppConfig.log('NET_GET_MS: ${sw.elapsedMilliseconds}');
-        return NetResponse<List<Post>>(
-          data: posts,
-          statusCode: response.statusCode,
-          durationMs: sw.elapsedMilliseconds,
+      final code = response.statusCode ?? 0;
+      if (code < 200 || code >= 300) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
         );
+      }
+      final data = response.data;
+      List<Post> posts = <Post>[];
+      if (data is List) {
+        posts = data
+            .whereType<Map>()
+            .map((e) => Post.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      } else if (data is Map) {
+        final map = Map<String, dynamic>.from(data);
+        if (map['posts'] is List) {
+          posts = (map['posts'] as List)
+              .whereType<Map>()
+              .map((e) => Post.fromJson(Map<String, dynamic>.from(e)))
+              .toList();
+        } else if (map.containsKey('id') && map.containsKey('title')) {
+          posts = [Post.fromJson(map)];
+        }
       }
       sw.stop();
       AppConfig.log('NET_GET_MS: ${sw.elapsedMilliseconds}');
-      final mapped = mapDioException(DioException(
-        requestOptions: response.requestOptions,
-        response: response,
-        type: DioExceptionType.badResponse,
-        message: 'Unexpected response (status=${response.statusCode})',
-      ));
       return NetResponse<List<Post>>(
-        error: mapped,
+        data: posts,
         statusCode: response.statusCode,
         durationMs: sw.elapsedMilliseconds,
       );
     } on DioException catch (e) {
+      AppConfig.log('DIO_ERR type=${e.type} status=${e.response?.statusCode} rt=${e.error.runtimeType} msg=${e.message}');
       sw.stop();
       AppConfig.log('NET_GET_MS: ${sw.elapsedMilliseconds}');
       final mapped = mapDioException(e);

@@ -1,140 +1,97 @@
-# Flutter Networking Sample
+## Opis
 
-A research-focused Flutter application demonstrating HTTP networking patterns using Dio, designed for performance comparison studies.
+Projekt prezentuje spójny przykład warstwy sieciowej w aplikacji mobilnej zorientowany na badanie wydajności (porównanie z implementacją w innym ekosystemie). Zawiera mechanizmy pomiaru opóźnień, kontrolowane środowisko uruchomieniowe oraz ekran benchmarków umożliwiający replikowalne eksperymenty.
 
-## Architecture
+## Cele
 
-Clean architecture with three layers:
-- **data/**: HTTP client (`ApiClient`), models (`Post`), repositories
-- **domain/**: Repository interfaces and business logic
-- **ui/**: Screens and widgets using Material 3
+- Uzyskanie deterministycznych (powtarzalnych) pomiarów czasów odpowiedzi.
+- Zachowanie prostoty modeli i brak generowania kodu, aby zminimalizować czynniki zakłócające.
+- Wyraźne rozdzielenie odpowiedzialności (konfiguracja, klient HTTP, logika domenowa, UI).
+- Udostępnienie gotowych scenariuszy S1–S6 (payload, lista, błąd 500, timeout, offline, echo nagłówków).
 
-## Networking
+## Architektura
 
-Uses Dio 5.x for HTTP operations with:
-- Connection and receive timeouts
-- Request timing measurements
-- Retry logic with exponential backoff
-- Error mapping to typed `AppError` enum
-- Release-safe interceptors (disabled in production)
+Struktura modułowa inspirowana prostą „clean architecture”:
+- `core/` – konfiguracja (wartości z `--dart-define`), typy błędów, narzędzia pomiarowe.
+- `data/` – klient HTTP (Dio), modele danych, dekodowanie JSON, operacje sieciowe.
+- `domain/` – repozytorium udostępniające spójny interfejs dla UI.
+- `bench/` – logika benchmarków (uruchamianie serii, agregacja statystyk, eksport wyników).
+- `ui/` – ekrany (lista danych + ekran Benchmark), komponenty prezentacyjne.
 
-## Measurement hygiene
+## Stos technologiczny
 
-For consistent performance measurements:
+- Framework UI i wieloplatformowość.
+- Biblioteka HTTP (Dio) z konfigurowalnymi timeoutami i możliwością dopinania interceptorów.
+- Ręczne mapowanie JSON → obiekty (brak codegen, pełna kontrola nad dekodowaniem).
+- Standardowe narzędzia testowe do testów jednostkowych.
 
-1. **Configuration**: Use `--dart-define` flags for deterministic setup:
-   ```bash
-   flutter run --dart-define=BASE_URL=https://api.example.com
-   ```
+## Warstwa sieciowa
 
-2. **Warm-up**: Always perform 2-3 warm-up requests before measurement
+Klient tworzony z użyciem `BaseOptions` (nagłówki, timeouty). Każde wywołanie mierzone pojedynczym `Stopwatch`; wynik logowany jako `NET_GET_MS: <ms>`. Błędy mapowane do zunifikowanych typów (offline, timeout, 4xx, 5xx, cancel, unknown). W trybie pomiarowym retry jest wyłączony, aby nie zniekształcać metryk. Dekodowanie JSON: ręczne dopasowanie listy lub obiektu; odporność na drobne różnice typów (np. `id` jako String/Int).
 
-3. **Sample size**: Use N=20-50 requests per test scenario
+## Scenariusze benchmarków (S1–S6)
 
-4. **Metrics**: Report median and P95 response times
+| ID | Zakres | Opis | Endpoint bazowy | Ścieżka | Charakterystyka |
+|----|--------|------|-----------------|---------|-----------------|
+| S1 | Small | Pojedynczy mały obiekt | dummyjson.com | /posts/1 | Minimalny narzut dekodowania |
+| S2 | List | Lista ok. 100 elementów | dummyjson.com | /posts?limit=100 | Test kosztu dekodowania listy |
+| S3 | Error | Deterministyczny błąd serwera | httpbingo.org | /status/500 | Stałe 500, ścieżka błędu |
+| S4 | Timeout | Sztuczne opóźnienie (klient 1s) | httpbingo.org | /delay/10 | Wymuszone przekroczenie limitu |
+| S5 | Offline | Tryb samolotowy | dummyjson.com | /posts/1 | Błąd połączenia / szybki fail |
+| S6 | Headers | Echo nagłówków | httpbingo.org | /headers | Weryfikacja nagłówków żądania |
 
-5. **Retry policy**: Keep `AppConfig.enableRetry=false` during timing tests
+Interpretacja: W scenariuszach błędowych (S3–S5) mierzymy koszt obsługi ścieżki błędu; w pozostałych – czas pobrania + dekodowania.
 
-6. **Timing logs**: Look for `NET_GET_MS: <milliseconds>` in console output
+## Metodyka pomiarów
 
-## Build variants
+- N (liczba prób): standardowo 30 (pierwsza odrzucona jako warm-up → 29 analizowanych).
+- Miary wyjściowe: median (robust), p95 (ogon opóźnień), min, max.
+- P95: indeks obliczany jako floor(0.95*(n-1)) na posortowanej liście czasów.
+- Logowanie: dokładnie jeden wpis `NET_GET_MS` na zapytanie (warstwa danych).
+- Środowisko: tryb profilowy lub zbliżony (na symulatorze dopuszczalny debug – z adnotacją).
+- Brak równoległości – sekwencyjne żądania eliminują interferencje.
+- Retry wyłączony (czystość statystyk). Możliwość włączenia jedynie w analizie funkcjonalnej.
 
-Measure both configurations:
-- **Baseline**: `flutter build apk` or `flutter build ios`
-- **Minified**: `flutter build apk --obfuscate --split-debug-info=symbols/` or equivalent
+## Uruchomienie
 
-## Bench screen
+Instalacja zależności:
+```
+flutter pub get
+```
 
-The app includes a Bench screen for performance testing with configurable inputs:
+Analiza i testy:
+```
+flutter analyze
+flutter test
+```
 
-**Inputs:**
-- PATH: API endpoint path (default: `/posts`)
-- Runs (N): Number of requests to perform (default: 20)
-- Warm-up: Discard first request (default: ON)
-- Timeouts: Connect/Send/Receive timeouts in milliseconds
-- Enable retry: Toggle retry logic (default: OFF for clean measurements)
-
-**Outputs:**
-- Per-attempt durations and status/error codes
-- Aggregates: count, min, max, median, P95
-- Error counts by type (Timeout/Offline/4xx/5xx/Cancel/Unknown)
-- Last payload preview
-
-**Example profile run:**
-```bash
+Uruchomienie z parametrami (przykład):
+```
 flutter run --profile \
-  --dart-define=BASE_URL=https://jsonplaceholder.typicode.com \
+  --dart-define=BASE_URL=https://dummyjson.com \
   --dart-define=CONNECT_TIMEOUT_MS=8000 \
   --dart-define=SEND_TIMEOUT_MS=8000 \
   --dart-define=RECEIVE_TIMEOUT_MS=8000
 ```
 
-Note: Keep retry OFF for performance testing. Each request logs exactly one `NET_GET_MS: <ms>` from the data layer.
+Ekran benchmarków: wybierz preset S1–S6, ustaw N=30, włącz warm-up, uruchom. Po zakończeniu użyj eksportu (CSV / Markdown) lub logu zbiorczego.
 
-## Configuration
+## Struktura katalogów (skrót)
 
-Required `--dart-define` parameters:
-- `BASE_URL`: API endpoint (enforced - no default fallback)
-
-Optional parameters:
-- `CONNECTION_TIMEOUT_MS`: default 10000
-- `RECEIVE_TIMEOUT_MS`: default 15000
-- `ENABLE_RETRY`: default false
-
-Example:
-```bash
-flutter run --dart-define=BASE_URL=https://jsonplaceholder.typicode.com
+```
+lib/
+  core/        # konfiguracja + typy błędów + narzędzia
+  data/        # klient HTTP, modele, implementacja repo
+  domain/      # interfejs repozytorium
+  bench/       # runner, presety, agregacja, eksport
+  ui/          # ekrany i widżety prezentacyjne
+test/unit/     # testy jednostkowe (dekodowanie, błędy, runner)
+scripts/       # pomiary rozmiaru, LOC, parsowanie logów
 ```
 
-## Development
+## Testy
 
-```bash
-# Install dependencies
-flutter pub get
-
-# Run tests
-flutter test
-
-# Analyze code
-flutter analyze
-
-# Build for measurement
-flutter build apk --release
-flutter build appbundle --release
-flutter build ios --release
-```
-
-## Measurement scripts
-
-Use included scripts for consistent measurements:
-
-```bash
-# Count lines of code
-./scripts/loc_flutter.sh
-
-# Measure Android build sizes
-./scripts/build_size_android.sh
-
-# Measure iOS build size (macOS only)
-./scripts/build_size_ios.sh
-```
-
-Results are saved to `metrics/` folder. See `metrics/README.md` for CSV workflow.
-
-## Test scenarios
-
-Implement these test cases:
-- **T1**: Single GET request (timing measurement)
-- **T2**: Multiple parallel requests (concurrency test)
-- **T3**: Error handling (network timeout, HTTP 4xx/5xx)
-- **T4**: Large payload parsing (JSON decode performance)
-
-All scenarios use the `/posts` endpoint returning `Post[]` models.
-
-## Dependencies
-
-- Flutter 3.3+
-- Dio 5.4+ (HTTP client)
-- Material 3 (UI framework)
-
-No code generation or complex state management to maintain comparability with Compose Multiplatform baseline.
+Warstwa testowa obejmuje:
+- Dekodowanie modeli (sprawdzenie odporności na różne typy pól).
+- Mapowanie błędów (typy timeout / offline / 4xx / 5xx / cancel / unknown).
+- Agregację benchmarków (median, p95, odrzucenie warm-up, zliczanie błędów).
